@@ -21,16 +21,15 @@ from ..core.registry import (
 )
 from ..core.storage import download_model, prepare_local_model
 from .schemas import ChatRequest, LoadModelRequest, OpenAIChatRequest, UpdateSettingsRequest
-from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-
-from fastapi.staticfiles import StaticFiles
-
+class AliasRequest(BaseModel):
+    model_id: str
+    alias: str
 def build_app(runtime: RuntimeState | None = None) -> FastAPI:
     ensure_app_dirs()
     runtime_state = runtime or RuntimeState()
-
-    app = FastAPI(title="local-llm", version="0.1.0")
+    app = FastAPI(title="local-llm", version="0.1.1")
     app.mount("/web", StaticFiles(directory="web", html=True), name="web")
     @app.get("/")
     def root():
@@ -81,7 +80,23 @@ def build_app(runtime: RuntimeState | None = None) -> FastAPI:
             "models": registry.get("models", []),
             "active_model": active.__dict__ if active else None,
         }
+    @app.post("/models/alias")
+    def set_alias(payload: AliasRequest):
+        registry = load_registry()
 
+        model = next(
+            (m for m in registry.get("models", []) if m["id"] == payload.model_id),
+            None
+        )
+
+        if not model:
+            raise HTTPException(status_code=404, detail="Model not found")
+
+        model["alias"] = payload.alias
+
+        save_registry(registry)
+
+        return {"ok": True}
     @app.post("/models/load")
     def load_model(payload: LoadModelRequest) -> dict[str, Any]:
         registry = load_registry()
@@ -107,6 +122,7 @@ def build_app(runtime: RuntimeState | None = None) -> FastAPI:
     async def add_model(
         file: UploadFile = File(None),
         url: str = Form(None),
+        alias: str | None = Form(None),
     ) -> dict[str, Any]:
 
         registry = load_registry()
@@ -126,6 +142,7 @@ def build_app(runtime: RuntimeState | None = None) -> FastAPI:
                     source_type="upload",
                     source=file.filename,
                     local_path=copied,
+                    alias=alias,
                 )
 
                 temp_path.unlink(missing_ok=True)
@@ -139,6 +156,7 @@ def build_app(runtime: RuntimeState | None = None) -> FastAPI:
                     source_type="url",
                     source=url,
                     local_path=downloaded,
+                    alias=alias,
                 )
 
             else:
@@ -158,7 +176,6 @@ def build_app(runtime: RuntimeState | None = None) -> FastAPI:
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-
 
     @app.post("/settings")
     def update_settings(payload: UpdateSettingsRequest) -> dict[str, Any]:

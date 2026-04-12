@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: local-llm
-Version: 0.1.0
+Version: 0.1.1
 Summary: Local-first LLM server with model registry, downloader, and web settings page.
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
@@ -13,7 +13,7 @@ Requires-Dist: python-multipart
 
 # local-llm
 
-A local-first LLM server prototype.
+A local LLM server prototype. Meant for easy and quick use
 
 ## What it does
 
@@ -22,30 +22,64 @@ A local-first LLM server prototype.
   - a local model path, or
   - a direct download URL
 - It saves the model into a local registry so you do not need to enter it again
-- It starts a FastAPI server and opens the model settings page in your browser
-- It exposes:
-  - `POST /chat`
-  - `POST /v1/chat/completions`
-  - `GET /models`
-  - `POST /models/load`
-  - `POST /settings`
+- It starts a FastAPI server and opens the web UI in your browser
+- You can manage models via:
+  - CLI (on first run)
+  - Web UI (add, load, switch models)
 
+## Features:
+- view installed models
+- load/switch models
+- adjust runtime settings
+- add models via:
+  - file upload (.gguf)
+  - direct URL
+
+## API
+
+- `POST /chat`
+- `POST /v1/chat/completions`
+- `GET /models`
+- `POST /models/load`
+- `POST /models/add`
+---
+# Setup
 ## Install
 
-```bash
+```
 pip install -e .
 ```
-
 ## Start
-
-```bash
+```
 local-llm start
 ```
 
-## Notes
+## Help
+```
+local-llm --help
+```
 
-- Models are stored in `~/.local-llm/models/`
-- Registry data lives in `~/.local-llm/registry.toml`
-- Settings live in `~/.local-llm/config.toml`
+## Web UI
 
-This is a prototype designed to be easy to extend.
+Accessible at:
+```
+home -> http://127.0.0.1:8000
+settings -> -> http://127.0.0.1:8000/web/settings
+```
+
+---
+
+# Notes
+
+Models are stored in:
+```
+~/.local-llm/models/
+```
+Registry data:
+```
+~/.local-llm/registry.toml
+```
+Settings:
+```
+~/.local-llm/config.toml
+```

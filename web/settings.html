@@ -33,12 +33,14 @@
                 <div class="spacer"></div>
 
                 <label for="modelSelect">Registered models</label>
+                <div class="button-row" style="padding-bottom: 0px;">
                 <select id="modelSelect"></select>
-
+                <button style="width: 25%;" onclick="editAlias('${model.id}')">Edit Alias</button>
+                </div>
                 <div class="spacer"></div>
                 <div class="button-row">
-                    <button onclick="setActiveModel()">Load</button>
-                    <button onclick="openAddModel()">ADD [+]</button>
+                    <button onclick="setActiveModel()">Load Model</button>
+                    <button style="width: 25%;" onclick="openAddModel()">ADD [+]</button>
                     <button class="icon-btn" onclick="refreshAll()">↻</button>
                 </div>
 
@@ -48,9 +50,9 @@
             <div id="addModal"
                 style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; z-index: 1000;">
                 <div style="background:#11192f; padding:20px; border-radius:12px; width:400px;">
-
+                    
                     <h3>Add Model</h3>
-
+                    <input type="text" id="modelAlias" placeholder="Alias (optional)" />
                     <label>Upload file</label>
                     <input type="file" id="modelFile">
 

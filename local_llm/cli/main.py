@@ -46,20 +46,27 @@ def _wait_for_server(host: str, port: int, timeout: float = 30.0) -> None:
 def _show_models_table(registry: dict) -> None:
     table = Table(title="Registered models")
     table.add_column("ID", style="cyan")
+    table.add_column("Alias", style="green")
     table.add_column("Name", style="white")
     table.add_column("Source", style="magenta")
     table.add_column("Path", style="green")
     table.add_column("Active", style="yellow")
 
     active_id = registry.get("app", {}).get("active_model_id", "")
+
     for model in registry.get("models", []):
+        alias = model.get("alias")
+        display_alias = alias if alias not in (None, "") else model["name"]
+
         table.add_row(
             model["id"],
+            display_alias,
             model["name"],
             f'{model["source_type"]}: {model["source"]}',
             model["local_path"],
             "yes" if model["id"] == active_id else "",
         )
+
     console.print(table)
 
 
@@ -82,7 +89,8 @@ def _choose_existing_model(registry: dict) -> str | None:
 def _add_source_to_registry(source_text: str) -> ModelEntry:
     """Add a path or URL to the registry and return the new entry."""
     registry = load_registry()
-
+    alias = typer.prompt("Give this model a name (or leave empty)", default="").strip()
+    alias = alias or None
     if is_url(source_text):
         temp_id = f"download_{len(registry.get('models', [])) + 1:04d}"
         downloaded = download_model(source_text, temp_id)
@@ -92,6 +100,7 @@ def _add_source_to_registry(source_text: str) -> ModelEntry:
             source_type="url",
             source=source_text,
             local_path=downloaded,
+            alias=alias,
         )
     else:
         local_source = Path(source_text).expanduser()
@@ -105,6 +114,7 @@ def _add_source_to_registry(source_text: str) -> ModelEntry:
             source_type="path",
             source=str(local_source),
             local_path=copied,
+            alias=alias,
         )
 
     # Move the copied/downloaded model into a stable folder named by the final ID.
@@ -208,7 +218,68 @@ def add(source: str) -> None:
     """Add a model from a local path or direct URL to the registry."""
     entry = _add_source_to_registry(source)
     console.print(f"[green]Added model[/green] {entry.id}")
+    
+@app.command()
 
+@app.command()
+def use(model_id: str):
+    """Set active model by ID or alias."""
+    registry = load_registry()
 
+    model = next(
+        (m for m in registry.get("models", [])
+         if m["id"] == model_id or m.get("alias") == model_id),
+        None
+    )
+
+    if not model:
+        console.print("[red]Model not found[/red]")
+        raise typer.Exit(1)
+
+    set_active_model(registry, model["id"])
+
+    save_registry(registry)
+
+    console.print(f"[green]Active model → {model.get('alias') or model['id']}[/green]")
+
+@app.command()
+def alias(model_id: str, name: str):
+    """Set or update a model alias."""
+    registry = load_registry()
+
+    updated = False
+
+    for i, m in enumerate(registry.get("models", [])):
+        if m["id"] == model_id or m.get("alias") == model_id:
+            registry["models"][i]["alias"] = name 
+            updated = True
+            break
+
+    if not updated:
+        console.print("[red]Model not found[/red]")
+        raise typer.Exit(1)
+
+    save_registry(registry)
+
+    console.print(f"[green]Alias set → {name}[/green]")
 if __name__ == "__main__":
     app()
+@app.command()
+def unalias(model_id: str):
+    """Remove a model alias."""
+    registry = load_registry()
+
+    model = next(
+        (m for m in registry.get("models", [])
+         if m["id"] == model_id or m.get("alias") == model_id),
+        None
+    )
+
+    if not model:
+        console.print("[red]Model not found[/red]")
+        raise typer.Exit(1)
+
+    model["alias"] = None
+    save_registry(registry)
+
+    console.print("[yellow]Alias removed[/yellow]")

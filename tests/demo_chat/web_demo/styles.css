@@ -1,0 +1,29 @@
+body {
+  background:#0b1020;
+  color:white;
+  font-family:sans-serif;
+  padding:20px;
+}
+
+#chat {
+  height:70vh;
+  overflow:auto;
+  margin-bottom:10px;
+}
+
+.msg {
+  margin:8px 0;
+}
+
+.user { color:#7c9cff; }
+.ai { color:#41d38a; }
+
+.input-box {
+  display:flex;
+  gap:10px;
+}
+
+input {
+  flex:1;
+  padding:10px;
+}
