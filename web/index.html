@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>local-llm</title>
+</head>
+
+<body style="font-family:sans-serif; text-align:center; margin-top:100px;">
+
+    <h1>local-llm</h1>
+    <p id="status">Checking server...</p>
+
+    <script>
+        async function checkServer() {
+            try {
+                const res = await fetch("/health");
+
+                if (!res.ok) throw new Error();
+
+                const data = await res.json();
+
+                if (data.ok) {
+                    window.location.href = "./settings.html";
+                    return;
+                }
+            } catch (e) { }
+
+            document.getElementById("status").innerHTML =
+                "❌ Server not running<br><br>Run:<br><code>local-llm start</code>";
+        }
+
+        checkServer();
+    </script>
+
+</body>
+
+</html>

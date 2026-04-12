@@ -1,0 +1,2 @@
+[console_scripts]
+local-llm = local_llm.cli:app

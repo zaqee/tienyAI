@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-llm"
+version = "0.1.0"
+description = "Local-first LLM server with model registry, downloader, and web settings page."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.29",
+  "typer>=0.12",
+  "tomlkit>=0.13",
+  "llama-cpp-python>=0.2.90",
+  "python-multipart"
+]
+
+[project.scripts]
+local-llm = "local_llm.cli:app"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["local_llm*"]
+
