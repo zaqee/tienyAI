@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tieny</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="brand">tieny</div>
+      <div class="sub">local AI host · v0.2.0 scaffold</div>
+    </div>
+    <div class="status" id="serverStatus"><span class="dot"></span> checking server</div>
+  </header>
+
+  <main class="layout">
+    <section class="panel models-panel">
+      <div class="section-head">
+        <div>
+          <h1>Models</h1>
+          <p>One registry. Files stay exactly where you put them.</p>
+        </div>
+        <div class="actions">
+          <button class="secondary" id="refreshButton">Refresh</button>
+          <button class="primary" id="addButton">+ Add model</button>
+        </div>
+      </div>
+      <div class="loaded-card" id="loadedCard">
+        <span class="muted">Loaded model</span>
+        <strong id="loadedName">None</strong>
+        <button class="ghost" id="unloadButton" disabled>Unload</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th><th>ID</th><th>Type</th><th>Runtime</th><th>Size</th><th>Path</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="modelsBody"></tbody>
+        </table>
+      </div>
+      <div class="empty hidden" id="emptyState">No models registered yet. Add a GGUF by path.</div>
+    </section>
+
+    <section class="panel chat-panel">
+      <div class="section-head compact">
+        <div>
+          <h2>Basic chat</h2>
+          <p>Only here to prove the loaded LLM path works end-to-end.</p>
+        </div>
+      </div>
+      <div id="chatHistory" class="chat-history"></div>
+      <form id="chatForm" class="chat-form">
+        <textarea id="chatInput" rows="3" placeholder="Say something to the loaded model…"></textarea>
+        <button class="primary" type="submit">Send</button>
+      </form>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <div id="contextMenu" class="context-menu hidden">
+    <button id="developerModeMenu">Enable Developer Mode</button>
+  </div>
+
+  <section id="developerConsole" class="developer-console hidden">
+    <div class="dev-head">
+      <div><strong>Developer Console</strong><span>central Tieny logs</span></div>
+      <div class="dev-controls">
+        <select id="logLevel" aria-label="Log level">
+          <option>ALL</option><option>DEBUG</option><option>INFO</option><option>WARNING</option><option>ERROR</option>
+        </select>
+        <label><input type="checkbox" id="autoScroll" /> auto-scroll</label>
+        <button id="copyLogs">Copy</button>
+        <button id="clearLogs">Clear</button>
+        <button id="closeDev">Hide</button>
+      </div>
+    </div>
+    <pre id="logOutput"></pre>
+  </section>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,28 +1,36 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "local-llm"
-version = "0.1.1"
-description = "Local-first LLM server with model registry, downloader, and web settings page."
+name = "tieny"
+version = "0.2.1"
+description = "A small local AI host with one Python API, CLI, Web UI, and pluggable model runtimes."
 readme = "README.md"
 requires-python = ">=3.10"
+authors = [{ name = "Tieny" }]
 dependencies = [
-  "fastapi>=0.110",
-  "uvicorn[standard]>=0.29",
-  "typer>=0.12",
-  "tomlkit>=0.13",
-  "llama-cpp-python>=0.2.90",
-  "python-multipart"
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "typer>=0.27",
+  "rich>=13.9",
+  "platformdirs>=4.3",
+  "pydantic>=2.9",
 ]
 
-[project.scripts]
-local-llm = "local_llm.cli:app"
+[project.optional-dependencies]
+llm = ["llama-cpp-python>=0.3"]
+dev = ["pytest>=8.3"]
 
-[tool.setuptools]
-include-package-data = true
+[project.scripts]
+tieny = "tieny.cli.app:app"
 
 [tool.setuptools.packages.find]
-include = ["local_llm*"]
+where = ["src"]
 
+[tool.setuptools.package-data]
+"tieny.webui" = ["static/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
