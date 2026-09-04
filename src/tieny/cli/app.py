@@ -10,6 +10,10 @@ from pathlib import Path
 from typing import Optional
 import os
 
+import json
+from urllib.request import urlopen
+from urllib.error import URLError
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -83,6 +87,20 @@ def _parse_bool(value: str, *, option: str) -> bool:
 
     logger.warning("Invalid boolean value for %s: %s", option, value)
     raise TienyError(f"{option} must be true or false.")
+
+
+def _loaded_id_from_server() -> str | None:
+    try:
+        with urlopen("http://127.0.0.1:8000/models", timeout=1) as response:
+            data = json.load(response)
+
+        if isinstance(data, dict):
+            return data.get("loaded_id") or data.get("loaded")
+
+    except (URLError, TimeoutError, OSError, ValueError):
+        return None
+
+    return None
 
 
 @app.callback(invoke_without_command=True)
