@@ -1,4 +1,4 @@
-"""Typer command-line interface for Tieny v0.2.0."""
+"""Typer command-line interface for Tieny v0.3.0."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import time
 import webbrowser
 from pathlib import Path
 from typing import Optional
+import os
 
 import typer
 from rich.console import Console
@@ -28,6 +29,17 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=True,
 )
+
+# Sub-command group for persistent configuration.
+# Future config areas like runtime, GPU, wheel, etc. can live under this.
+config_app = typer.Typer(
+    name="config",
+    help="View and change persistent Tieny settings.",
+    no_args_is_help=True,
+)
+
+app.add_typer(config_app, name="config")
+
 console = Console()
 logger = logging.getLogger(__name__)
 models = ModelService()
@@ -60,23 +72,27 @@ def _direct_row(model: ModelRecord, loaded_id: str | None) -> dict:
     }
 
 
-def _loaded_id_from_server() -> str | None:
-    try:
-        health = client.request("GET", "/api/health", timeout=0.4)
-        loaded = health.get("loaded_model") if isinstance(health, dict) else None
-        return loaded.get("id") if loaded else None
-    except TienyError:
-        return None
+def _parse_bool(value: str, *, option: str) -> bool:
+    """Parse common CLI boolean values into a real bool."""
+    normalized = value.strip().lower()
+
+    if normalized in {"true", "1", "yes", "on"}:
+        return True
+    if normalized in {"false", "0", "no", "off"}:
+        return False
+
+    logger.warning("Invalid boolean value for %s: %s", option, value)
+    raise TienyError(f"{option} must be true or false.")
 
 
 @app.callback(invoke_without_command=True)
 def main(
-    version: bool = typer.Option(
-        False,
-        "--version",
-        help="Show the installed Tieny version and exit.",
-        is_eager=True,
-    ),
+        version: bool = typer.Option(
+            False,
+            "--version",
+            help="Show the installed Tieny version and exit.",
+            is_eager=True,
+        ),
 ) -> None:
     """Tieny's generic model commands work across modalities as support is added."""
     _boot_logging()
@@ -100,27 +116,325 @@ def install() -> None:
 
 @app.command()
 def start(
-    no_browser: bool = typer.Option(
-        False, "--no-browser", help="Start the local server without opening the Web UI."
-    ),
+        model: Optional[str] = typer.Argument(
+            None,
+            help="Optional model ID or name to preload. Requires --preload.",
+        ),
+        no_ui: bool = typer.Option(
+            False,
+            "--no-ui",
+            help="Start the local server without opening the Web UI.",
+        ),
+        preload: bool = typer.Option(
+            False,
+            "--preload",
+            help="Preload a model when Tieny starts.",
+        ),
 ) -> None:
     """Start the persistent local API/runtime process and Web UI."""
-    logger.info("CLI command: start no_browser=%s", no_browser)
+    logger.info(
+        "CLI command: start no_ui=%s preload=%s model=%s",
+        no_ui,
+        preload,
+        model,
+    )
+
+    if model is not None and not preload:
+        logger.warning(
+            "Rejected startup model '%s' because --preload was not supplied",
+            model,
+        )
+        console.print(
+            "[red]A startup model can only be used with --preload.[/red]"
+        )
+        raise typer.Exit(2)
+
     config = ConfigStore().load()
+
+    if preload:
+        if model is not None:
+            try:
+                resolved = models.resolve(model)
+            except TienyError as exc:
+                logger.warning(
+                    "Could not resolve explicit preload model '%s': %s",
+                    model,
+                    exc,
+                )
+                console.print(
+                    f"[bold red]Preload failed:[/bold red] {exc}"
+                )
+                raise typer.Exit(1)
+
+            os.environ["TIENY_START_PRELOAD"] = resolved.id
+
+            logger.debug(
+                "Explicit startup preload resolved '%s' -> id=%s name=%s",
+                model,
+                resolved.id,
+                resolved.name,
+            )
+
+            console.print(
+                f"[cyan]Preload:[/cyan] "
+                f"{resolved.name} [dim]({resolved.id})[/dim]"
+            )
+        else:
+            os.environ["TIENY_START_PRELOAD"] = "__default__"
+            logger.debug(
+                "Startup preload requested using configured/default model"
+            )
+    else:
+        os.environ.pop("TIENY_START_PRELOAD", None)
+
     url = f"http://{config.host}:{config.port}"
 
-    if not no_browser:
+    # CLI --no-ui always overrides config.
+    # Otherwise, follow the persistent ui.auto_open setting.
+    should_open_ui = config.ui.auto_open and not no_ui
+
+    logger.debug(
+        "UI startup decision: config_auto_open=%s cli_no_ui=%s should_open=%s",
+        config.ui.auto_open,
+        no_ui,
+        should_open_ui,
+    )
+
+    if should_open_ui:
         def open_later() -> None:
             time.sleep(0.8)
             logger.info("Opening Web UI at %s", url)
             webbrowser.open(url)
 
         threading.Thread(target=open_later, daemon=True).start()
+    else:
+        logger.info("Web UI auto-open disabled for this startup")
 
     console.print(f"[bold]Tieny[/bold] starting at [cyan]{url}[/cyan]")
+
     import uvicorn
 
-    uvicorn.run("tieny.server.app:app", host=config.host, port=config.port, log_level="info")
+    uvicorn.run(
+        "tieny.server.app:app",
+        host=config.host,
+        port=config.port,
+        log_level="info",
+    )
+
+
+@config_app.command("preload")
+def config_preload(
+        set_model: Optional[str] = typer.Option(
+            None,
+            "--set",
+            metavar="MODEL",
+            help="Set the default preload model by ID or name.",
+        ),
+        reset: bool = typer.Option(
+            False,
+            "--reset",
+            help="Reset the preload model to the last successfully loaded model.",
+        ),
+        auto: Optional[str] = typer.Option(
+            None,
+            "--auto",
+            metavar="BOOL",
+            help="Automatically preload on start: true or false.",
+        ),
+) -> None:
+    """View or change model preload settings."""
+    logger.info(
+        "CLI command: config preload set=%s reset=%s auto=%s",
+        set_model,
+        reset,
+        auto,
+    )
+
+    # --set and --reset describe two conflicting operations on the same
+    # setting, so accepting both would make the result ambiguous.
+    if set_model is not None and reset:
+        logger.warning("Rejected config preload: --set and --reset used together")
+        console.print("[red]Use either --set or --reset, not both.[/red]")
+        raise typer.Exit(2)
+
+    store = ConfigStore()
+    config = store.load()
+    changed = False
+
+    try:
+        if set_model is not None:
+            # Resolve before saving so config can never point at a model that
+            # does not exist. Store the stable ID so renaming remains safe.
+            model = models.resolve(set_model)
+            config.preload.model = model.id
+            changed = True
+
+            logger.debug(
+                "Resolved preload target '%s' -> id=%s name=%s",
+                set_model,
+                model.id,
+                model.name,
+            )
+
+            console.print(
+                f"[green]Default preload model set[/green] "
+                f"{model.name} [dim]({model.id})[/dim]"
+            )
+
+        if reset:
+            # None deliberately means "follow the last successfully loaded
+            # model" rather than disabling preload entirely.
+            previous = config.preload.model
+            config.preload.model = None
+            changed = True
+
+            logger.debug(
+                "Reset preload model from %s to last-used behaviour",
+                previous,
+            )
+
+            console.print(
+                "[green]Default preload model reset.[/green] "
+                "Tieny will use the last successfully loaded model."
+            )
+        auto_value: bool | None = None
+
+        if auto is not None:
+            normalized = auto.strip().lower()
+
+            if normalized in {"true", "1", "yes", "on"}:
+                auto_value = True
+            elif normalized in {"false", "0", "no", "off"}:
+                auto_value = False
+            else:
+                logger.warning("Invalid preload --auto value: %s", auto)
+                console.print(
+                    "[red]--auto must be true or false.[/red]"
+                )
+                raise typer.Exit(2)
+
+        if auto_value is not None:
+            previous = config.preload.auto
+            config.preload.auto = auto_value
+            changed = True
+
+            logger.debug(
+                "Changed automatic preload from %s to %s",
+                previous,
+                auto_value,
+            )
+
+            state = "enabled" if auto_value else "disabled"
+            console.print(f"[green]Automatic preload {state}.[/green]")
+
+        if changed:
+            store.save(config)
+            logger.info(
+                "Saved preload config model=%s auto=%s",
+                config.preload.model,
+                config.preload.auto,
+            )
+            return
+
+        # No options means this command acts as a status/read command.
+        logger.debug(
+            "Displaying preload config model=%s auto=%s",
+            config.preload.model,
+            config.preload.auto,
+        )
+
+        table = Table(title="Preload configuration", show_header=False)
+        table.add_column("Setting", style="bold")
+        table.add_column("Value")
+
+        if config.preload.model is None:
+            model_display = "last used"
+        else:
+            try:
+                model = models.resolve(config.preload.model)
+                model_display = f"{model.name} ({model.id})"
+            except TienyError:
+                # Config may reference a model that was removed after it was
+                # selected. Don't make viewing config itself fail.
+                logger.warning(
+                    "Configured preload model '%s' no longer exists",
+                    config.preload.model,
+                )
+                model_display = f"{config.preload.model} [missing]"
+
+        table.add_row("Default model", model_display)
+        table.add_row(
+            "Auto preload",
+            "enabled" if config.preload.auto else "disabled",
+        )
+
+        console.print(table)
+
+    except TienyError as exc:
+        logger.warning("Preload configuration failed: %s", exc)
+        console.print(f"[bold red]Config failed:[/bold red] {exc}")
+        raise typer.Exit(1)
+
+
+@config_app.command("no-ui")
+def config_no_ui(
+        auto: Optional[str] = typer.Option(
+            None,
+            "--auto",
+            metavar="BOOL",
+            help="Automatically start Tieny without opening the Web UI.",
+        ),
+) -> None:
+    """View or change automatic no-UI startup behaviour."""
+    logger.info("CLI command: config no-ui auto=%s", auto)
+
+    store = ConfigStore()
+    config = store.load()
+
+    try:
+        if auto is not None:
+            no_ui_enabled = _parse_bool(auto, option="--auto")
+
+            previous = config.ui.auto_open
+            config.ui.auto_open = not no_ui_enabled
+
+            logger.debug(
+                "Changed UI auto-open from %s to %s",
+                previous,
+                config.ui.auto_open,
+            )
+
+            store.save(config)
+
+            state = "enabled" if no_ui_enabled else "disabled"
+            console.print(
+                f"[green]Automatic no-UI startup {state}.[/green]"
+            )
+            return
+
+        # No options means: show current setting.
+        no_ui_enabled = not config.ui.auto_open
+
+        logger.debug(
+            "Displaying no-ui config auto=%s",
+            no_ui_enabled,
+        )
+
+        table = Table(title="No-UI configuration", show_header=False)
+        table.add_column("Setting", style="bold")
+        table.add_column("Value")
+
+        table.add_row(
+            "Automatic no-UI",
+            "enabled" if no_ui_enabled else "disabled",
+        )
+
+        console.print(table)
+
+    except TienyError as exc:
+        logger.warning("No-UI configuration failed: %s", exc)
+        console.print(f"[bold red]Config failed:[/bold red] {exc}")
+        raise typer.Exit(1)
 
 
 @app.command("add")
@@ -187,7 +501,7 @@ def load_model(target: str = typer.Argument(..., help="Model ID or name.")) -> N
 
 @app.command("unload")
 def unload_model(
-    target: Optional[str] = typer.Argument(None, help="Optional loaded model ID or name."),
+        target: Optional[str] = typer.Argument(None, help="Optional loaded model ID or name."),
 ) -> None:
     """Unload the current model, optionally verifying it by ID or name."""
     logger.info("CLI command: unload target=%s", target)
@@ -205,12 +519,12 @@ def unload_model(
 
 @app.command("remove")
 def remove_model(
-    target: str = typer.Argument(..., help="Model ID or name."),
-    delete_file: bool = typer.Option(
-        False,
-        "--del",
-        help="Also permanently delete the original model file from disk.",
-    ),
+        target: str = typer.Argument(..., help="Model ID or name."),
+        delete_file: bool = typer.Option(
+            False,
+            "--del",
+            help="Also permanently delete the original model file from disk.",
+        ),
 ) -> None:
     """Remove a registry entry; --del also deletes the original model file."""
     logger.warning("CLI command: remove target=%s delete_file=%s", target, delete_file)
@@ -244,13 +558,13 @@ def remove_model(
 
 @app.command("name")
 def name_model(
-    target: str = typer.Argument(..., help="Model ID or current name."),
-    new_name: Optional[str] = typer.Argument(None, help="New unique model name."),
-    remove_name: bool = typer.Option(
-        False,
-        "--remove",
-        help="Reset the name to the filename-derived default.",
-    ),
+        target: str = typer.Argument(..., help="Model ID or current name."),
+        new_name: Optional[str] = typer.Argument(None, help="New unique model name."),
+        remove_name: bool = typer.Option(
+            False,
+            "--remove",
+            help="Reset the name to the filename-derived default.",
+        ),
 ) -> None:
     """Change a model's name, or reset it with --remove."""
     logger.info(

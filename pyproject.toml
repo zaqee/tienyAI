@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tieny"
-version = "0.2.1"
+version = "0.3.0"
 description = "A small local AI host with one Python API, CLI, Web UI, and pluggable model runtimes."
 readme = "README.md"
 requires-python = ">=3.10"

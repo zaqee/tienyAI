@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
-
+from tieny.core.state import StateStore
 from tieny.core.config import ConfigStore
 from tieny.core.errors import RuntimeStateError
 from tieny.models.entity import ModelRecord
@@ -17,13 +17,15 @@ logger = logging.getLogger(__name__)
 
 class RuntimeCoordinator:
     def __init__(
-        self,
-        models: ModelService | None = None,
-        registry: RuntimeRegistry | None = None,
+            self,
+            models: ModelService | None = None,
+            registry: RuntimeRegistry | None = None,
+            state: StateStore | None = None,
     ) -> None:
         self.models = models or ModelService()
         self.config = ConfigStore().load()
         self.registry = registry or RuntimeRegistry()
+        self.state = state or StateStore()
         self._runtime: BaseRuntime | None = None
         self._runtime_name: str | None = None
         self._loaded_model: ModelRecord | None = None
@@ -50,9 +52,21 @@ class RuntimeCoordinator:
             model.type,
             model.runtime,
         )
+
         runtime = self._runtime_for(model.runtime)
+
+        # Only update state after the runtime confirms the model loaded.
         runtime.load(model)
+
         self._loaded_model = model
+        self.state.set_last_used_model(model.id)
+
+        logger.info(
+            "Loaded model %s (%s); updated last-used model",
+            model.id,
+            model.name,
+        )
+
         return model
 
     def unload(self, target: str | None = None) -> ModelRecord | None:
@@ -72,11 +86,11 @@ class RuntimeCoordinator:
         return loaded
 
     def chat(
-        self,
-        messages: list[dict[str, str]],
-        *,
-        max_tokens: int = 256,
-        temperature: float = 0.7,
+            self,
+            messages: list[dict[str, str]],
+            *,
+            max_tokens: int = 256,
+            temperature: float = 0.7,
     ) -> dict[str, Any]:
         if self._loaded_model is None or self._runtime is None:
             raise RuntimeStateError("No model is loaded.")

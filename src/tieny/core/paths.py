@@ -27,6 +27,8 @@ def models_registry_path() -> Path:
 def config_path() -> Path:
     return home_dir() / "config.json"
 
+def state_path() -> Path:
+    return home_dir() / "state.json"
 
 def logs_dir() -> Path:
     return home_dir() / "logs"
